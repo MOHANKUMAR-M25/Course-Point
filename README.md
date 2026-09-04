@@ -1,6 +1,6 @@
-# 🇩🇪 Course Point — Instructor/Trainer Website
+# Course Point — General Learning Platform
 
-A polished, full-stack web application for **Course Point**, featuring German language instruction/training, course details, contact details, paid one-on-one consultation booking via **Google Calendar**, student reviews, testimonials, videos and an image gallery — with a secure, Instructor/Trainer-only admin panel for real-time content editing.
+A polished, full-stack web application for **Course Point**, supporting common courses, enrollment and payments, student progress, assessments, paid one-on-one consultation booking via **Google Calendar**, reviews, success stories, free video lessons and an image gallery. A secure admin panel provides real-time content editing.
 
 ## Tech Stack
 
@@ -8,26 +8,28 @@ A polished, full-stack web application for **Course Point**, featuring German la
 | -------- | ----------------------------------------------------------- |
 | Frontend | React 18 + Vite + Tailwind CSS + Sass (SCSS)                 |
 | Backend  | Node.js + Express (REST API)                                 |
-| Auth     | Google OAuth 2.0 + JWT sessions                              |
+| Auth     | OTP student authentication + Google OAuth admin login + JWT sessions |
 | Calendar | Google Calendar API (freebusy + event creation + Meet links) |
 
 ## 🔐 Security Model
 
 - **Anyone** can view the website and book consultation slots.
-- **Only** `meenupkc@gmail.com` (signed in via Google) gets the Admin Panel and edit rights:
+- **Admins** sign in with Google OAuth and are checked against the server-side admin allowlist. They can:
   - Add student reviews in real-time
   - Add testimonials in real-time
   - Add YouTube videos in real-time
   - Add training images in real-time
-  - Update trainer profile / courses (API)
+  - Update the Course Point profile and courses (API)
+- **New students** register with email and phone OTP verification; Google OAuth is not used for first-time registration.
+- **Existing students** can sign in with their registered email or Candidate ID (CID), then verify an OTP sent to their registered email. Existing Google sign-in is also supported.
 - All `/api/admin/*` endpoints are protected by JWT and verify the Google account email server-side.
 
 ## 📅 Google Calendar Booking Flow
 
-1. The Instructor/Trainer signs in once with Google (`Sign in` button) — the OAuth tokens allow the backend to access the calendar.
+1. An admin signs in once with Google (`Sign in` button) — the OAuth tokens allow the backend to access the calendar.
 2. Students see her **live availability** (free slots computed via the Calendar freebusy API, Mon–Sat 9:00–19:00).
 3. A student picks a slot, enters name/email/phone, and books.
-4. The backend creates a **Google Calendar event** on the Instructor/Trainer's calendar with the student as attendee — the student automatically receives a calendar invite **with a Google Meet link**.
+4. The backend creates a **Google Calendar event** on the admin calendar with the student as attendee — the student automatically receives a calendar invite **with a Google Meet link**.
 
 > Until Google credentials are configured, the app runs in **demo mode** (default slots shown, bookings recorded in memory).
 
@@ -55,7 +57,6 @@ Sample/
 │           ├── ModulesAdmin.jsx  # 🔐 Module editor
 │           ├── AssessmentsAdmin.jsx # 🔐 Assessment + question builder
 │           ├── GradingAdmin.jsx  # 🔐 Listen to & score recordings
-│           ├── SpokenGerman.jsx  # 🗣 Spoken German landing section
 │           └── ... (Hero, About, Courses, Reviews, Testimonials,
 │                    Videos, Gallery, Contact, Footer)
 └── backend/                      # Node.js + Express REST API
@@ -90,11 +91,17 @@ npm run dev
 
 Open http://localhost:3000
 
-## ⚙️ Google Cloud Setup (required for live login + calendar)
+### Main application pages
+
+- `#courses` — dedicated course catalog with search
+- `#dashboard` — dedicated admin analytics dashboard with table search
+- `#/course/<id>` — enrolled course learning page
+
+## ⚙️ Google Cloud Setup (admin login + calendar)
 
 1. Go to https://console.cloud.google.com/ → create/select a project.
 2. **APIs & Services → Library** → enable **Google Calendar API**.
-3. **APIs & Services → OAuth consent screen** → External → add `meenupkc@gmail.com` as a test user → add scopes: `email`, `profile`, `.../auth/calendar`.
+3. **APIs & Services → OAuth consent screen** → External → add the configured admin Google account as a test user → add scopes: `email`, `profile`, `.../auth/calendar`.
 4. **APIs & Services → Credentials → Create Credentials → OAuth Client ID → Web application**:
    - Authorized JavaScript origins: `http://localhost:3000`
    - Authorized redirect URIs: `http://localhost:5000/api/auth/google/callback`
@@ -104,7 +111,13 @@ Open http://localhost:3000
    GOOGLE_CLIENT_SECRET=xxxx
    JWT_SECRET=some-long-random-string
    ```
-6. Restart the backend. The Instructor/Trainer then clicks **Sign in** on the site — after the first login, the calendar goes live for student bookings.
+6. Restart the backend. An admin then clicks **Sign in** on the site — after the first login, the calendar goes live for student bookings.
+
+### Student authentication
+
+New students must register with their name, email and phone number, then verify the emailed and SMS OTPs. The account receives a permanent Candidate ID such as `CID-2026-7M9LIA`.
+
+Existing students can log in with either their registered email or Candidate ID. The login OTP is always sent to the registered email address.
 
 ## API Endpoints
 
@@ -131,6 +144,8 @@ Open http://localhost:3000
 | POST   | `/api/assessments/attempts/:id/audio/:questionId` | Upload one oral answer |
 | POST   | `/api/assessments/attempts/:id/submit`  | Submit + auto-score             |
 | GET    | `/api/assessments/attempts/:id`         | My result & feedback            |
+| GET    | `/api/learning/courses/:id/certificate/status` | Certificate eligibility     |
+| GET    | `/api/learning/courses/:id/certificate` | Download completion certificate |
 
 ### Auth
 | Method | Endpoint                    | Description                       |
@@ -139,11 +154,11 @@ Open http://localhost:3000
 | GET    | `/api/auth/google/callback` | OAuth redirect (issues JWT)       |
 | GET    | `/api/auth/me`              | Current session info              |
 
-### Admin (JWT required, only meenupkc@gmail.com)
+### Admin (JWT required, Google OAuth allowlist)
 | Method       | Endpoint                        | Description                |
 | ------------ | ------------------------------- | -------------------------- |
 | PUT          | `/api/admin/trainer`            | Update trainer profile     |
-| POST/PUT/DEL | `/api/admin/courses[/:id]`      | Manage courses             |
+| POST/PUT/DEL | `/api/admin/courses[/:id]`      | Manage courses and certificate trainer names |
 | POST/DEL     | `/api/admin/reviews[/:id]`      | Add/remove student reviews |
 | POST/DEL     | `/api/admin/testimonials[/:id]` | Add/remove testimonials    |
 | POST/DEL     | `/api/admin/videos[/:id]`       | Add/remove videos          |
@@ -180,19 +195,18 @@ pay for a course  →  enrollment granted automatically
 | Format | Question types | Scoring |
 | ------ | -------------- | ------- |
 | `written` | multiple choice, multi-select, fill-in-the-blank | **Auto-scored** instantly on submit |
-| `oral` | spoken answers recorded with the mic | **The Instructor/Trainer scores each recording** in Admin Panel → 🎤 Grading |
+| `oral` | spoken answers recorded with the mic | **The admin scores each recording** in Admin Panel → 🎤 Grading |
 
-**Spoken German (course 7) ships as an oral assessment** — six speaking tasks.
-Each gives the student thinking time, then records their answer (with a length
-cap), lets them listen back and re-record, and uploads it. The Instructor/Trainer gets an email,
-plays each recording in the Grading tab, scores it out of the question's points
-and adds per-answer feedback. Submitting the grade emails the student their
-result.
+Oral assessments can contain speaking or recording tasks. Each gives the
+student thinking time, then records an answer (with a length cap), lets them
+listen back and re-record, and uploads it. The admin reviews each recording in
+the Grading tab, scores it and adds per-answer feedback. Submitting the grade
+emails the student their result.
 
 Fill-in-the-blank matching ignores case and folds umlauts, so `HEISSE`, `heiße`
 and `heisse` all match one accepted answer.
 
-### Where the Instructor/Trainer edits this
+### Where the admin edits this
 
 | Admin Panel tab | What it does |
 | --------------- | ------------ |
@@ -221,7 +235,7 @@ Recordings are stored in `backend/uploads/` and served from `/uploads/…`.
 
 ## 🎟 Flash Sales & Coupons
 
-The Instructor/Trainer manages these from the **Admin Panel → 🎟 Coupons & Sale** tab (sign in with
+The admin manages these from the **Admin Panel → 🎟 Coupons & Sale** tab (sign in with
 Google): edit the banner headline/countdown/advertised code, and create, edit,
 switch off or delete coupon codes — changes appear on the site immediately.
 
@@ -251,7 +265,7 @@ The seed/default content lives in `backend/data/siteData.js` (`flashSale` + `cou
 
 ```js
 {
-  code: "GERMAN25",
+  code: "COURSE25",
   type: "percent",        // "percent" | "flat"
   value: 25,              // percent (0–100) or flat rupees off
   appliesTo: "courses",   // "all" | "courses" | "consultation"
@@ -285,7 +299,7 @@ Notes:
 
 ## ✏️ Editing the Website in Future
 
-1. **Real-time (recommended)** — The Instructor/Trainer signs in with Google → the **Admin Panel** appears at the top of the site → add reviews, testimonials, videos and images instantly, and run flash sales / coupon codes from the **🎟 Coupons & Sale** tab.
+1. **Real-time (recommended)** — The admin signs in with Google → the **Admin Panel** appears at the top of the site → add reviews, testimonials, videos and images instantly, and run flash sales / coupon codes from the **🎟 Coupons & Sale** tab.
 2. **Content file** — edit `backend/data/siteData.js` and restart the backend.
 3. **Styling** — tweak `frontend/tailwind.config.js` and Sass variables in `frontend/src/styles/main.scss`.
 4. **New sections** — add a component in `frontend/src/components/` + endpoint in `backend/server.js`.
